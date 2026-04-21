@@ -12,7 +12,7 @@ from utils.random_string import gen_random_string
 from utils.response import success_response
 
 
-ekko = APIRouter(prefix="/email", tags=["email"])
+ekko = APIRouter(prefix="/api/email", tags=["email"])
 
 load_dotenv()
 
