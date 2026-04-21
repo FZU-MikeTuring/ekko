@@ -50,6 +50,9 @@ class DomainMemberInfo(BaseModel):
     alias: str | None
     join_time: datetime
     role: DomainMemberRole
+    nick_name: str | None = None
+    avatar: str | None = None
+    email: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

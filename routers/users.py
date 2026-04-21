@@ -6,6 +6,7 @@ from config.db_config import get_db
 from crud import users
 from models.users import Users
 from schemas.users import (
+    ChangeEmailRequestUser,
     ChangePasswordRequestUser,
     FindPasswordRequestUser,
     LoginRequestUser,
@@ -13,8 +14,11 @@ from schemas.users import (
     UpdateUsersRequest,
     UserAuthResponse,
     UserInfoResponse,
+    UserSettingsRequest,
+    UserSettingsResponse,
 )
 from utils.auth import get_current_user
+from utils.file_storage import delete_uploaded_file
 from utils.response import success_response
 
 
@@ -60,15 +64,45 @@ async def info(user: Users = Depends(get_current_user)):
     )
 
 
+@ekko.get("/settings")
+async def get_user_settings(user: Users = Depends(get_current_user)):
+    return success_response(
+        message="User settings obtained successfully",
+        data=UserSettingsResponse(settings=user.voice_settings or {}).model_dump(),
+    )
+
+
+@ekko.put("/settings")
+async def update_user_settings(
+    payload: UserSettingsRequest,
+    user: Users = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    updated_user = await users.update_user(
+        db,
+        user.id,
+        UpdateUsersRequest(voice_settings=payload.settings),
+    )
+    if not updated_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return success_response(
+        message="User settings updated successfully",
+        data=UserSettingsResponse(settings=updated_user.voice_settings or {}).model_dump(),
+    )
+
+
 @ekko.put("/update")
 async def update_user_info(
     update_user: UpdateUsersRequest,
     user: Users = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    previous_avatar = user.avatar
     updated_user = await users.update_user(db, user.id, update_user)
     if not updated_user:
         raise HTTPException(status_code=404, detail="User not found")
+    if update_user.avatar != previous_avatar:
+        delete_uploaded_file(previous_avatar)
     return success_response(
         message="User info updated successfully",
         data=UserInfoResponse.model_validate(updated_user),
@@ -91,6 +125,45 @@ async def update_password(
     if not result:
         raise HTTPException(status_code=500, detail="修改密码失败，请稍后再试")
     return success_response(message="修改密码成功")
+
+
+@ekko.put("/change_email")
+async def change_email(
+    email_data: ChangeEmailRequestUser,
+    user: Users = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if email_data.current_email != user.email:
+        raise HTTPException(status_code=403, detail="当前邮箱与登录账号不一致")
+
+    current_cached_verify_code = await get_cache(email_data.current_email)
+    if not current_cached_verify_code:
+        raise HTTPException(status_code=404, detail="当前邮箱验证码已失效")
+    if email_data.current_verify_code != current_cached_verify_code:
+        raise HTTPException(status_code=403, detail="当前邮箱验证码错误")
+
+    new_cached_verify_code = await get_cache(email_data.new_email)
+    if not new_cached_verify_code:
+        raise HTTPException(status_code=404, detail="新邮箱验证码已失效")
+    if email_data.new_verify_code != new_cached_verify_code:
+        raise HTTPException(status_code=403, detail="新邮箱验证码错误")
+
+    existing_user = await users.select_user_email(db, email_data.new_email)
+    if existing_user and existing_user.id != user.id:
+        raise HTTPException(status_code=400, detail="新邮箱已被注册")
+
+    updated_user = await users.update_user(
+        db,
+        user.id,
+        UpdateUsersRequest(email=email_data.new_email),
+    )
+    if not updated_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return success_response(
+        message="邮箱修改成功",
+        data=UserInfoResponse.model_validate(updated_user),
+    )
 
 
 @ekko.put("/find_password")

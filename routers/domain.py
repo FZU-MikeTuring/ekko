@@ -20,6 +20,7 @@ from schemas.domain import (
     KickDomainMemberRequest,
 )
 from utils.auth import get_current_user
+from utils.file_storage import delete_uploaded_file
 from utils.pagination import compute_pagination_params
 from utils.response import success_response
 
@@ -90,9 +91,12 @@ async def updated_domain(
     if current_domain.create_id != user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="你没有权限修改该域")
 
+    previous_avatar = current_domain.avatar
     updated = await domain.update_domain(db, domain_update)
     if not updated:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="域更新失败")
+    if domain_update.avatar != previous_avatar:
+        delete_uploaded_file(previous_avatar)
 
     return success_response(
         message=f"修改域成功 {updated.domain_name}",
@@ -112,6 +116,7 @@ async def deleted_domain(
     if current_domain.create_id != user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="你没有权限删除该域")
 
+    delete_uploaded_file(current_domain.avatar)
     deleted = await domain.delete_domain_id(db, domain_id)
     if not deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="域不存在")
@@ -175,7 +180,7 @@ async def get_domain_member_infos(
     elif role_str == "member":
         role = DomainMemberRole.Member
 
-    total, domain_members = await domain.domain_member_infos(
+    total, domain_members = await domain.domain_member_infos_with_users(
         db=db,
         domain_id=domain_member_search_infos.domain_id,
         role=role,
@@ -189,7 +194,19 @@ async def get_domain_member_infos(
         message="获取成员信息成功",
         data=DomainMembersInfoPage(
             total=total,
-            domain_infos=[DomainMemberInfo.model_validate(item) for item in domain_members],
+            domain_infos=[
+                DomainMemberInfo(
+                    domain_id=member.domain_id,
+                    member_id=member.member_id,
+                    alias=member.alias,
+                    join_time=member.join_time,
+                    role=member.role,
+                    nick_name=current_user.nick_name,
+                    avatar=current_user.avatar,
+                    email=current_user.email,
+                )
+                for member, current_user in domain_members
+            ],
         ),
     )
 
@@ -298,13 +315,10 @@ async def get_my_domains(
         _offset=p["offset"],
         _limit=p["limit"],
     )
-    if not domains:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="你还没有加入任何域")
-
     return success_response(
         message="查询成功",
         data=DomainInfosPage(
             total=total,
-            domain_infos=[DomainInfo.model_validate(item) for item in domains],
+            domain_infos=[DomainInfo.model_validate(item) for item in (domains or [])],
         ),
     )

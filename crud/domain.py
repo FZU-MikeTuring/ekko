@@ -172,6 +172,37 @@ async def domain_member_infos(
     return total, result_list.scalars().all()
 
 
+async def domain_member_infos_with_users(
+    db: AsyncSession,
+    domain_id: str,
+    role: DomainMemberRole | None = None,
+    _offset: int | None = None,
+    _limit: int | None = None,
+):
+    search_conditions: list[ColumnElement[bool]] = [DomainMembers.domain_id == domain_id]
+    if role is not None:
+        search_conditions.append(DomainMembers.role == role)
+
+    total_query = select(func.count(DomainMembers.member_id)).where(and_(*search_conditions))
+    total_result = await db.execute(total_query)
+    total = total_result.scalar() or 0
+
+    query = (
+        select(DomainMembers, Users)
+        .join(Users, Users.id == DomainMembers.member_id)
+        .where(and_(*search_conditions))
+        .order_by(DomainMembers.join_time.asc())
+    )
+    if _offset is not None:
+        query = query.offset(_offset)
+    if _limit is not None:
+        query = query.limit(_limit)
+
+    result = await db.execute(query)
+    rows = result.all()
+    return total, rows
+
+
 async def change_domain_role(
     db: AsyncSession,
     domain_id: str,

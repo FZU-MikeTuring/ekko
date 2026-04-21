@@ -1,17 +1,23 @@
 from fastapi import FastAPI
-from routers import users, domain, channel, email
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
+from routers import users, domain, channel, email, upload
 from utils.exception_handler import register_exception_handler
+from utils.file_storage import UPLOAD_ROOT, ensure_upload_dirs
+
 ekko = FastAPI()
 
 register_exception_handler(ekko)
+ensure_upload_dirs()
 
 ekko.include_router(users.ekko)
 ekko.include_router(domain.ekko)
 ekko.include_router(channel.ekko)
-
 ekko.include_router(email.ekko)
+ekko.include_router(upload.ekko)
+
+ekko.mount("/uploads", StaticFiles(directory=str(UPLOAD_ROOT)), name="uploads")
 
 
 origins=[

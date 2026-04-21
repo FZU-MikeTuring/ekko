@@ -62,7 +62,17 @@ desktop.ini
 *.bak
 
 # Local uploads and generated media
-uploads/
+uploads/*
+!uploads/.gitkeep
+!uploads/avatars/
+uploads/avatars/*
+!uploads/avatars/.gitkeep
+!uploads/avatars/users/
+!uploads/avatars/domains/
+uploads/avatars/users/*
+uploads/avatars/domains/*
+!uploads/avatars/users/.gitkeep
+!uploads/avatars/domains/.gitkeep
 media/
 tmp/
 temp/
